@@ -1,47 +1,23 @@
-import { createSlice, nanoid } from "@reduxjs/toolkit";
+import { createSlice, nanoid, createAsyncThunk } from "@reduxjs/toolkit";
+import axios from "axios";
 import { sub } from "date-fns";
 
-const initialState = [
-  {
-    id: 1,
-    title: "Learning redux 1 ",
-    content: "AA 1",
-    datetime: sub(new Date(), { minutes: 120 }).toISOString(),
-    reactions: {
-      like: 0,
-      wow: 0,
-      heart: 0,
-      rocket: 0,
-      coffee: 0,
-    },
-  },
-  {
-    id: 2,
-    title: "Learning redux 2",
-    content: "AA 2",
-    datetime: sub(new Date(), { minutes: 120 }).toISOString(),
-    reactions: {
-      like: 0,
-      wow: 0,
-      heart: 0,
-      rocket: 0,
-      coffee: 0,
-    },
-  },
-  {
-    id: 3,
-    title: "Learning redux 3",
-    content: "AA 3",
-    datetime: sub(new Date(), { minutes: 120 }).toISOString(),
-    reactions: {
-      like: 0,
-      wow: 0,
-      heart: 0,
-      rocket: 0,
-      coffee: 0,
-    },
-  },
-];
+const POSTS_URL = "https://jsonplaceholder.typicode.com/posts";
+
+const initialState = {
+  posts: [],
+  status: "idle", //idle | loading | succeeded | failed
+  error: null,
+};
+
+export const fetchPosts = createAsyncThunk("posts/fetchPosts", async () => {
+  try {
+    const response = await axios.get(POSTS_URL);
+    return [...response.data];
+  } catch (error) {
+    return error.message;
+  }
+});
 
 const postsSlice = createSlice({
   name: "posts",
@@ -49,7 +25,7 @@ const postsSlice = createSlice({
   reducers: {
     addPosts: {
       reducer(state, action) {
-        state.push(action.payload);
+        state.posts.push(action.payload);
       },
       prepare(title, content, userId) {
         return {
@@ -72,15 +48,49 @@ const postsSlice = createSlice({
     },
     addReaction(state, action) {
       const { postId, reaction } = action.payload;
-      const existingPost = state.find((post) => post.id === postId); // burada = yaparsan atama yapar ve hata verir
+      const existingPost = state.posts.find((post) => post.id === postId); // burada = yaparsan atama yapar ve hata verir
       if (existingPost) {
         existingPost.reactions[reaction]++;
       }
     },
   },
+  extraReducers: (builder) => {
+    //slice'in disinda parametre tanimamiza yarar
+    builder //fetch icin pending,fullfiled and rejected
+      .addCase(fetchPosts.pending, (state, action) => {
+        state.status = "loading";
+      })
+      .addCase(fetchPosts.fulfilled, (state, action) => {
+        state.status = "succeeded";
+
+        //Manuel olarak date ve reactionlar ekledim
+        let min = 1;
+        const loadedPosts = action.payload.map((post) => {
+          post.date = sub(new Date(), { minutes: min++ }).toISOString;
+          post.reactions = {
+            thumbsUp: 0,
+            hooray: 0,
+            heart: 0,
+            rocket: 0,
+            eyes: 0,
+          };
+          return post;
+        });
+
+        //Add any fetched posts to the array
+        state.posts = state.posts.concat(loadedPosts);
+      })
+      .addCase(fetchPosts.rejected, (state, action) => {
+        state.status = "failed";
+        state.error = action.error.message;
+      });
+  },
 });
 
-export const selectAllPosts = (state) => state.posts;
+//Initial State icindeki tum degerleri dispatch ile kullanabilmek icin export ediyorum
+export const selectAllPosts = (state) => state.posts.posts; // ilk post store adi, 2. post ise initialState'deki dizi
+export const getPostsStatus = (state) => state.posts.status;
+export const getPostsError = (state) => state.posts.error;
 
 export const { addPosts, addReaction } = postsSlice.actions;
 
@@ -90,3 +100,9 @@ export default postsSlice.reducer;
 //action --> ne yapmak istiyorsun (ekle, sil)
 //payload --> yapilacak islemin verisi (ornegin: eklenecek olan post, gonderilecek id vb)
 //reducer --> gelen action'a gore state'i guncelleyen fonksiyon
+
+//pending : action is in progress,
+//fulfilled : action has successfully completed
+//rejected : action has failed
+
+// createAsyncThunk ile olusturdugum metodlarimi daha sonra dispatch() icerisinde cagirabiliyorum
